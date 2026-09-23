@@ -30,7 +30,7 @@ jobs:
         uses: Edge-Echo/dsh-release-evidence@main
         with:
           run-testkit: 'true'
-          dsh-version: '0.1.5-rc.2'
+          dsh-version: '0.1.5-rc.1'
           suite: quick
           require-complete: 'true'
 
