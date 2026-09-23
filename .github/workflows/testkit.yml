@@ -1,0 +1,43 @@
+name: release evidence with the real lifecycle gate
+
+on:
+  workflow_dispatch:
+
+jobs:
+  evidence:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # The gate packs what the repository declares in package.json#files, so the build
+      # has to exist before it runs.
+      - name: Install and build the plugin
+        run: |
+          set -euo pipefail
+          npm install --no-audit --no-fund
+          npm run build
+          ls -la lib | head -5
+
+      # The action installs dsh-testkit itself when run-testkit is true, runs the
+      # lifecycle gate, and fails the job on a lifecycle failure (exit 1). Infrastructure
+      # failures (exit 3) do not masquerade as a pass: the pack then reports missing
+      # lifecycle evidence and the require-complete check fails.
+      - name: Run the lifecycle gate and pack the evidence
+        uses: Edge-Echo/dsh-release-evidence@main
+        with:
+          run-testkit: 'true'
+          dsh-version: '0.1.5-rc.2'
+          suite: quick
+          require-complete: 'true'
+
+      - name: Show what the gate produced
+        if: always()
+        run: |
+          echo "--- evidence tree ---"
+          find .dsh-testkit .dsh-evidence -type f 2>/dev/null | head -40 || true
+          echo "--- EVIDENCE.md ---"
+          cat .dsh-evidence/EVIDENCE.md 2>/dev/null || echo "(no pack)"
