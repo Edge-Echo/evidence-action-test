@@ -1,0 +1,7 @@
+{
+  "name": "evidence-action-fixture",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Fixture plugin used to exercise the dsh-release-evidence composite action",
+  "license": "MIT"
+}

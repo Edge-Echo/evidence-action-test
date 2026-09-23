@@ -1,0 +1,81 @@
+name: release evidence
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  evidence:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # --- stand-in for the real gates -------------------------------------------
+      # A real release would run dsh-testkit (Docker runner, installs DSH) and
+      # dsh-eval-harness here. This fixture writes the artifacts they would write, so
+      # the action's own behaviour is what is under test.
+      - name: Produce fixture evidence
+        run: |
+          set -euo pipefail
+          RUN=".dsh-testkit/runs/$(date -u +%Y-%m-%dT%H-%M-%S)"
+          mkdir -p "$RUN"
+          cat > "$RUN/report.json" <<'JSON'
+          {
+            "schema": "dsh-testkit/1",
+            "status": "passed",
+            "dshVersion": "0.15.3",
+            "artifactDigest": "sha256:fixture",
+            "stages": [
+              { "name": "resolve", "ok": true },
+              { "name": "install", "ok": true },
+              { "name": "package", "ok": true },
+              { "name": "register", "ok": true },
+              { "name": "exercise", "ok": true },
+              { "name": "uninstall", "ok": true },
+              { "name": "reboot", "ok": true }
+            ]
+          }
+          JSON
+          printf '%s' '<testsuite name="lifecycle" tests="7" failures="0" errors="0" skipped="0"/>' > "$RUN/junit.xml"
+          mkdir -p evidence
+          printf '%s' '{"status":"passed","cases":["01-bash-tool","02-fs-write-read","03-fs-search"]}' > evidence/eval-harness-report.json
+          echo "fixture evidence:"; find .dsh-testkit evidence -type f
+
+      - name: Generate an ephemeral signing key
+        run: |
+          set -euo pipefail
+          npx --yes dsh-release-evidence@^0.1.0 keygen --out key.pem
+          {
+            echo 'EVIDENCE_KEY<<EVIDENCE_KEY_EOF'
+            cat key.pem
+            echo 'EVIDENCE_KEY_EOF'
+          } >> "$GITHUB_ENV"
+
+      # --- the action under test --------------------------------------------------
+      - name: Pack and verify release evidence
+        id: evidence
+        uses: Edge-Echo/dsh-release-evidence@main
+        with:
+          run-testkit: 'false'
+          signing-key: ${{ env.EVIDENCE_KEY }}
+          expires-days: '30'
+          require-complete: 'true'
+
+      - name: Report the action outputs
+        run: |
+          echo "pack-path    = ${{ steps.evidence.outputs.pack-path }}"
+          echo "evidence-root= ${{ steps.evidence.outputs.evidence-root }}"
+          echo "verified     = ${{ steps.evidence.outputs.verified }}"
+          test -n "${{ steps.evidence.outputs.evidence-root }}"
+          test -f "${{ steps.evidence.outputs.pack-path }}/evidence.json"
+
+      - name: Third-party verification, from a clean checkout
+        run: |
+          set -euo pipefail
+          npx --yes dsh-release-evidence@^0.1.0 verify .dsh-evidence --require-complete
+          echo "--- EVIDENCE.md ---"
+          cat .dsh-evidence/EVIDENCE.md
