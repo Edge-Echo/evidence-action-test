@@ -1,0 +1,4 @@
+node_modules/
+key.pem
+.dsh-evidence/
+*.tgz
